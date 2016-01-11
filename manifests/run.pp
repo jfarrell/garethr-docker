@@ -161,11 +161,11 @@ define docker::run(
 
   if $restart {
 
-    $cidfile = "/var/run/docker-${sanitised_title}.cid"
+    $cidfile = "/var/run/${service_prefix}${sanitised_title}.cid"
 
     exec { "run ${title} with docker":
       command     => "${docker_command} run -d ${docker_run_flags} --name ${sanitised_title} --cidfile=${cidfile} --restart=\"${restart}\" ${image} ${command}",
-      unless      => "docker ps --no-trunc -a | grep `cat ${cidfile}`",
+      unless      => "${docker_command} ps --no-trunc -a | grep `cat ${cidfile}`",
       environment => 'HOME=/root',
       path        => ['/bin', '/usr/bin'],
       timeout     => 0
@@ -239,10 +239,10 @@ define docker::run(
           # This exec sequence will ensure the old-style CID container is stopped
           # before we replace the init script with the new-style.
           exec { "/bin/sh /etc/init.d/${service_prefix}${sanitised_title} stop":
-            onlyif  => "/usr/bin/test -f /var/run/docker-${sanitised_title}.cid && /usr/bin/test -f /etc/init.d/${service_prefix}${sanitised_title}",
+            onlyif  => "/bin/test -f /var/run/${service_prefix}${sanitised_title}.cid && /bin/test -f /etc/init.d/${service_prefix}${sanitised_title}",
             require => [],
           } ->
-          file { "/var/run/docker-${sanitised_title}.cid":
+          file { "/var/run/${service_prefix}${sanitised_title}.cid":
             ensure => absent,
           } ->
           File[$initscript]
@@ -278,6 +278,13 @@ define docker::run(
 
     if $restart_service {
       File[$initscript] ~> Service<| title == "${service_prefix}${sanitised_title}" |>
+
+      exec { "check-image-id-${service_prefix}${sanitised_title}":
+        command => '/bin/true',
+        onlyif  => "/bin/test \"$(${docker_command} inspect -f \'{{.Image}}\' --type container ${sanitised_title})\" != \"$(${docker_command} inspect -f \'{{.Id}}\' --type image ${image})\"",
+        notify  => Service[${service_prefix}${sanitised_title}],
+        require => File[$initscript],
+      }
     }
     else {
       File[$initscript] -> Service<| title == "${service_prefix}${sanitised_title}" |>
