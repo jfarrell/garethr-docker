@@ -358,6 +358,15 @@ define docker::run(
 
       if $restart_service {
         File[$initscript] ~> Service<| title == "${service_prefix}${sanitised_title}" |>
+
+        # Compare the running container ID to the images container ID and if they are different then
+        # notify the service to restart the container
+        exec { "check-image-id-${service_prefix}${sanitised_title}":
+          command => '/bin/true',
+          onlyif  => "/bin/test \"$(${docker_command} inspect -f \'{{.Image}}\' --type container ${sanitised_title})\" != \"$(${docker_command} inspect -f \'{{.Id}}\' --type image ${image})\"",
+          notify  => Service["${service_prefix}${sanitised_title}"],
+          require => File[$initscript],
+        }
       }
       else {
         File[$initscript] -> Service<| title == "${service_prefix}${sanitised_title}" |>
